@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { importProductsFromExcel, ExcelProductRow, normalizeItemNumberFromAny } from '../utils/excelImport';
+import { importProductsFromExcel, ExcelProductRow, normalizeItemNumberFromAny, safeString } from '../utils/excelImport';
 
 /**
  * Standalone Excel Import Demo
@@ -24,21 +24,26 @@ export const ExcelImportDemo = () => {
       setError(null);
       setData([]);
 
-      // This now safely handles undefined/null values
+      // Preview Import - safe against undefined/null values
       const result = await importProductsFromExcel(selectedFile);
       setData(result);
       setLoading(false);
     } catch (err) {
-      console.error('Import error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to import Excel');
+      console.error('Import preview failed:', err);
+      setError(err instanceof Error ? err.message : 'Import preview failed. Please check the Excel headers and image filenames.');
       setLoading(false);
     }
   };
 
   const handleNormalizeTest = () => {
-    // Test the safe normalization function
-    const result = normalizeItemNumberFromAny(testValue);
-    setNormalized(result);
+    try {
+      // Test the safe normalization function
+      const result = normalizeItemNumberFromAny(testValue);
+      setNormalized(result);
+    } catch (err) {
+      console.error('Normalization test error:', err);
+      setNormalized('(error)');
+    }
   };
 
   return (
@@ -74,7 +79,7 @@ export const ExcelImportDemo = () => {
         {file && (
           <div style={{ marginTop: '10px', padding: '10px', background: '#222', borderRadius: '4px' }}>
             <strong style={{ color: '#D6AA32' }}>Selected:</strong>{' '}
-            <span style={{ color: '#F7EFE0' }}>{file.name}</span>
+            <span style={{ color: '#F7EFE0' }}>{safeString(file?.name)}</span>
           </div>
         )}
 
@@ -190,16 +195,16 @@ export const ExcelImportDemo = () => {
                     borderBottom: '1px solid #333',
                   }}>
                     <td style={{ padding: '10px', color: '#F7EFE0' }}>
-                      {row.sheet_name}
+                      {safeString(row?.sheet_name)}
                     </td>
                     <td style={{ padding: '10px', color: '#8f8', fontFamily: 'monospace' }}>
-                      {row.item_number}
+                      {safeString(row?.item_number)}
                     </td>
                     <td style={{ padding: '10px', color: '#F7EFE0' }}>
-                      {row.price || '-'}
+                      {safeString(row?.price) || '-'}
                     </td>
                     <td style={{ padding: '10px', color: '#ccc', fontSize: '12px' }}>
-                      {row.excel_description || '-'}
+                      {safeString(row?.excel_description) || '-'}
                     </td>
                   </tr>
                 ))}
@@ -215,16 +220,20 @@ export const ExcelImportDemo = () => {
           ✅ Runtime Safety Features
         </h2>
         <ul style={{ color: '#F7EFE0', lineHeight: '1.8' }}>
-          <li>✓ Safe string operations - never crashes on undefined/null</li>
+          <li>✓ safeString(), safeLower(), safeUpper() helpers - never crash on undefined/null</li>
           <li>✓ Safe .includes(), .startsWith(), .endsWith() with proper checks</li>
-          <li>✓ Safe filename parsing from File objects</li>
-          <li>✓ Safe Excel cell value extraction</li>
-          <li>✓ Safe header normalization (handles line breaks, null values)</li>
+          <li>✓ Safe .trim(), .toLowerCase(), .toUpperCase(), .replace() operations</li>
+          <li>✓ Safe filename parsing from File objects (file?.name)</li>
+          <li>✓ Safe Excel cell value extraction with safeString(row[index])</li>
+          <li>✓ Safe header normalization (handles line breaks, underscores, null values)</li>
+          <li>✓ Sophisticated header detection (normalized + compact versions)</li>
+          <li>✓ Safe product field matching (item_number, category, etc.)</li>
+          <li>✓ Safe image path handling</li>
           <li>✓ Graceful error handling with console.error and stack traces</li>
           <li>✓ Skips empty/invalid rows without crashing</li>
-          <li>✓ Clear UI error messages instead of runtime crashes</li>
+          <li>✓ Clear UI error messages: "Import preview failed. Please check the Excel headers and image filenames."</li>
           <li>✓ Processes ALL sheets in workbook</li>
-          <li>✓ Flexible column header detection</li>
+          <li>✓ Try/catch around Preview Import with proper error logging</li>
         </ul>
       </div>
     </div>

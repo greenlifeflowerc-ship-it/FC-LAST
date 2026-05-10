@@ -11,26 +11,40 @@ export type ExcelProductRow = {
  * Safe string conversion helper
  * Converts any value to a trimmed string, never crashes
  */
-function safeString(value: unknown): string {
+export function safeString(value: unknown): string {
   if (value === null || value === undefined) return '';
   return String(value).trim();
 }
 
 /**
+ * Safe lowercase conversion
+ * Never crashes on undefined/null values
+ */
+export function safeLower(value: unknown): string {
+  return safeString(value).toLowerCase();
+}
+
+/**
+ * Safe uppercase conversion
+ * Never crashes on undefined/null values
+ */
+export function safeUpper(value: unknown): string {
+  return safeString(value).toUpperCase();
+}
+
+/**
  * Normalize item number from any value (Excel cell, filename, etc.)
  * - Removes file extensions and whitespace
- * - If value is pure digits (e.g., "9130"), add "AT-" prefix
  * - If value starts with "AR-", replace with "AT-"
  * - If value starts with "AT-", keep as is
- * - Preserves suffix letters (e.g., "9102FU" => "AT-9102FU")
+ * - Otherwise add "AT-" prefix
  * - Never crashes on undefined/null values
  */
 export function normalizeItemNumberFromAny(value: unknown): string {
   try {
-    const raw = safeString(value)
+    const raw = safeUpper(value)
       .replace(/\.[^/.]+$/, '') // Remove file extension
-      .replace(/\s+/g, '') // Remove all whitespace
-      .toUpperCase();
+      .replace(/\s+/g, ''); // Remove all whitespace
 
     if (!raw) return '';
 
@@ -44,13 +58,8 @@ export function normalizeItemNumberFromAny(value: unknown): string {
       return raw;
     }
 
-    // Pure number or number with suffix letters: add AT- prefix
-    if (/^[0-9]+[A-Z]*$/.test(raw)) {
-      return `AT-${raw}`;
-    }
-
-    // Other formats: return as is
-    return raw;
+    // Add AT- prefix
+    return `AT-${raw}`;
   } catch (error) {
     console.error('normalizeItemNumberFromAny error:', error, 'value:', value);
     return '';
@@ -73,19 +82,28 @@ export function normalizeItemNumberFromFilename(filename: string): string {
 
 /**
  * Normalize header name to match expected column names
- * Removes line breaks, trims, lowercases, collapses multiple spaces
+ * Removes line breaks, underscores, trims, lowercases, collapses multiple spaces
  * Never crashes on undefined/null
  */
 function normalizeHeader(header: unknown): string {
   try {
-    return safeString(header)
-      .replace(/[\r\n]+/g, ' ') // Replace line breaks with space
-      .toLowerCase()
+    const normalized = safeLower(header)
+      .replace(/\r?\n|\r/g, '') // Remove line breaks
+      .replace(/_/g, ' ') // Convert underscores to spaces
       .replace(/\s+/g, ' '); // Collapse multiple spaces
+
+    return normalized;
   } catch (error) {
     console.error('normalizeHeader error:', error, 'header:', header);
     return '';
   }
+}
+
+/**
+ * Get compact version of normalized header (no spaces)
+ */
+function compactHeader(header: string): string {
+  return header.replace(/\s+/g, '');
 }
 
 /**
@@ -152,15 +170,16 @@ export async function importProductsFromExcel(file: File): Promise<ExcelProductR
               }
 
               const normalizedHeaders = headerRow.map((h: any) => normalizeHeader(h));
+              const compactHeaders = normalizedHeaders.map((h: string) => compactHeader(h));
 
-              // Find column indices - safe version
-              const treeNoIndex = normalizedHeaders.findIndex((h) => {
+              // Find column indices - safe version with both normalized and compact matching
+              const treeNoIndex = normalizedHeaders.findIndex((h, idx) => {
                 if (!h) return false;
+                const compact = compactHeaders[idx];
                 return (
                   h === 'tree no' ||
-                  h === 'tree_no' ||
-                  h === 'treeno' ||
-                  (h.includes('tree') && h.includes('no'))
+                  compact === 'treeno' ||
+                  h === 'tree_no'
                 );
               });
 
@@ -169,9 +188,10 @@ export async function importProductsFromExcel(file: File): Promise<ExcelProductR
                 return h === 'r' || h === 'price';
               });
 
-              const descriptionIndex = normalizedHeaders.findIndex((h) => {
+              const descriptionIndex = normalizedHeaders.findIndex((h, idx) => {
                 if (!h) return false;
-                return h === 'description' || h.includes('descript');
+                const compact = compactHeaders[idx];
+                return compact === 'description' || h.includes('descript');
               });
 
               if (treeNoIndex === -1) {
@@ -187,18 +207,19 @@ export async function importProductsFromExcel(file: File): Promise<ExcelProductR
                   // Skip empty rows
                   if (!row || !Array.isArray(row) || row.length === 0) continue;
 
-                  const treeNo = row[treeNoIndex];
-                  const treeNoStr = safeString(treeNo);
+                  // Safe cell extraction
+                  const treeNoCell = treeNoIndex !== -1 ? row[treeNoIndex] : undefined;
+                  const treeNoStr = safeString(treeNoCell);
                   if (!treeNoStr) continue; // Skip rows without tree number
 
-                  const itemNumber = normalizeItemNumberFromAny(treeNo);
+                  const itemNumber = normalizeItemNumberFromAny(treeNoCell);
                   if (!itemNumber) continue;
 
-                  const priceValue = priceIndex !== -1 ? row[priceIndex] : '';
-                  const price = safeString(priceValue);
+                  const priceCell = priceIndex !== -1 ? row[priceIndex] : '';
+                  const price = safeString(priceCell);
 
-                  const descValue = descriptionIndex !== -1 ? row[descriptionIndex] : '';
-                  const description = safeString(descValue);
+                  const descCell = descriptionIndex !== -1 ? row[descriptionIndex] : '';
+                  const description = safeString(descCell);
 
                   allProducts.push({
                     item_number: itemNumber,
